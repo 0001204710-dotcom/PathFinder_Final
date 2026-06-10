@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model dependentes {
+  id                  Int            @id @default(autoincrement())
+  nome                String         @db.VarChar(150)
+  data_nascimento     DateTime       @db.Date
+  genero              String?        @db.VarChar(20)
+  Cpf                 String?        @unique(map: "Cpf") @db.VarChar(14)
+  tipo_sanguineo      String?        @db.VarChar(3)
+  alergias            String?        @db.Text
+  observacoes_medicas String?        @db.Text
+  data_cadastro       DateTime?      @default(now()) @db.Timestamp(0)
+  url_foto            String?        @db.VarChar(255)
+  medicamentos        medicamentos[]
+}
+
+model medicamentos {
+  id            Int          @id @default(autoincrement())
+  dependente_id Int?
+  nome          String       @db.VarChar(150)
+  dosagem       String?      @db.VarChar(75)
+  horario       DateTime?    @db.Time(0)
+  observacao    String?      @db.Text
+  dependentes   dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "medicamentos_ibfk_1")
+
+  @@index([dependente_id], map: "dependente_id")
+}
