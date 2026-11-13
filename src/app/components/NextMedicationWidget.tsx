@@ -1,24 +1,68 @@
 import { Clock, Pill } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 interface NextMedicationWidgetProps {
   nextMedication: {
     name: string;
     time: string;
-    minutesUntil: number;
+    minutesUntil: number; // Mantido por compatibilidade, mas ignoraremos para ter precisão
   };
+  onTimerComplete?: () => void;
 }
 
-export function NextMedicationWidget({ nextMedication }: NextMedicationWidgetProps) {
-  const [timeLeft, setTimeLeft] = useState(nextMedication.minutesUntil * 60);
+export function NextMedicationWidget({ nextMedication, onTimerComplete }: NextMedicationWidgetProps) {
+  
+  // Função para calcular os SEGUNDOS EXATOS diretamente do horário marcado, ignorando arredondamentos
+  const getExactSecondsLeft = () => {
+    if (!nextMedication.time || nextMedication.time === '--:--') return 0;
+    const [hours, minutes] = nextMedication.time.split(':').map(Number);
+    const now = new Date();
+    const target = new Date();
+    target.setHours(hours, minutes, 0, 0);
+    
+    const diff = target.getTime() - now.getTime();
+    return diff > 0 ? Math.floor(diff / 1000) : 0;
+  };
+
+  const [timeLeft, setTimeLeft] = useState(getExactSecondsLeft());
+  const [completed, setCompleted] = useState(false);
+  const initialSecondsRef = useRef<number>(getExactSecondsLeft());
+  const prevTimeLeftRef = useRef<number>(getExactSecondsLeft());
+  const hasTickedRef = useRef<boolean>(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      setTimeLeft((prev) => {
+        if (prev <= 0) return 0;
+        return prev - 1;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
   }, []);
+
+  // Reseta o contador regressivo sempre que o medicamento mudar
+  useEffect(() => {
+    const exactSeconds = getExactSecondsLeft();
+    setTimeLeft(exactSeconds);
+    setCompleted(false);
+    initialSecondsRef.current = exactSeconds;
+    prevTimeLeftRef.current = exactSeconds;
+    hasTickedRef.current = false; // Garante o reset do gatilho de tick
+  }, [nextMedication.name, nextMedication.time]);
+
+  // Dispara o callback apenas na transição exata de >0 para 0
+  useEffect(() => {
+    if (!completed && timeLeft === 0 && prevTimeLeftRef.current > 0 && initialSecondsRef.current > 0 && hasTickedRef.current) {
+      setCompleted(true);
+      onTimerComplete?.();
+    }
+    prevTimeLeftRef.current = timeLeft;
+  }, [timeLeft, completed, onTimerComplete]);
+
+  useEffect(() => {
+    if (timeLeft !== initialSecondsRef.current) hasTickedRef.current = true;
+  }, [timeLeft]);
 
   const hours = Math.floor(timeLeft / 3600);
   const minutes = Math.floor((timeLeft % 3600) / 60);
@@ -35,10 +79,14 @@ export function NextMedicationWidget({ nextMedication }: NextMedicationWidgetPro
   };
 
   const getUrgencyColor = () => {
+    if (timeLeft === 0 && !nextMedication.time) return 'border-gray-200 bg-gray-50';
     if (timeLeft < 300) return 'border-[#cc0000] bg-red-50'; // < 5 min
     if (timeLeft < 1800) return 'border-[#ff914d] bg-orange-50'; // < 30 min
     return 'border-blue-400 bg-blue-50';
   };
+
+  // Previne divisão por zero na barra de progresso caso minutesUntil venha zerado inicialmente
+  const totalSeconds = nextMedication.minutesUntil > 0 ? nextMedication.minutesUntil * 60 : initialSecondsRef.current || 1;
 
   return (
     <div className={`bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 border-l-4 ${getUrgencyColor()} transition-all`}>
@@ -70,7 +118,7 @@ export function NextMedicationWidget({ nextMedication }: NextMedicationWidgetPro
           <div
             className="h-full bg-[#cc0000] transition-all duration-1000 ease-linear"
             style={{
-              width: `${Math.max(0, 100 - (timeLeft / (nextMedication.minutesUntil * 60)) * 100)}%`,
+              width: `${Math.max(0, 100 - (timeLeft / totalSeconds) * 100)}%`,
             }}
           />
         </div>

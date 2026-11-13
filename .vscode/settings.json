@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cmd\\.exe /c \"netstat -ano \\| findstr :4000\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

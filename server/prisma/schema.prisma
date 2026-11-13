@@ -7,18 +7,96 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model usuarios {
+  id                     Int                         @id @default(autoincrement())
+  nome                   String                      @db.VarChar(150)
+  email                  String                      @unique @db.VarChar(150)
+  senha                  String                      @db.VarChar(255)
+  codigo_recuperacao_hash String?                    @db.VarChar(255)
+  codigo_recuperacao_expira DateTime?                @db.Timestamp(0)
+  codigo_recuperacao_enviado_em DateTime?            @db.Timestamp(0)
+  tentativas_recuperacao Int                         @default(0)
+  telefone               String?                     @db.VarChar(20)
+  data_nascimento        DateTime?                   @db.Date
+  data_criacao           DateTime?                   @default(now()) @db.Timestamp(0)
+  dependentes            dependentes[]
+  assinaturas            assinaturas[]
+  instituicoes           institutional_memberships[] @relation("InstitutionalOwner")
+  equipes                institutional_memberships[] @relation("InstitutionalDoctor")
+  grupos_institucionais  institutional_groups[]
+  grupos_com_medico      institutional_groups[]      @relation("GroupDoctor")
+  dependentes_atribuidos dependentes[]               @relation("AssignedDoctor")
+}
+
+model contatos_emergencia {
+  id            Int          @id @default(autoincrement())
+  dependente_id Int?
+  nome          String       @db.VarChar(150)
+  telefone      String       @db.VarChar(20)
+  relacao       String       @db.VarChar(50)
+  dependente    dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dependente_id], map: "contatos_emergencia_dependente_id_index")
+}
+
 model dependentes {
-  id                  Int            @id @default(autoincrement())
-  nome                String         @db.VarChar(150)
-  data_nascimento     DateTime       @db.Date
-  genero              String?        @db.VarChar(20)
-  Cpf                 String?        @unique(map: "Cpf") @db.VarChar(14)
-  tipo_sanguineo      String?        @db.VarChar(3)
-  alergias            String?        @db.Text
-  observacoes_medicas String?        @db.Text
-  data_cadastro       DateTime?      @default(now()) @db.Timestamp(0)
-  url_foto            String?        @db.VarChar(255)
-  medicamentos        medicamentos[]
+  id                      Int                   @id @default(autoincrement())
+  usuario_id              Int?
+  nome                    String                @db.VarChar(150)
+  data_nascimento         DateTime              @db.Date
+  genero                  String?               @db.VarChar(20)
+  Cpf                     String?               @unique(map: "Cpf") @db.VarChar(14)
+  tipo_sanguineo          String?               @db.VarChar(3)
+  peso                    Float? // em kg
+  altura                  Float? // em centimetros
+  alergias                String?               @db.Text
+  observacoes_medicas     String?               @db.Text
+  data_cadastro           DateTime?             @default(now()) @db.Timestamp(0)
+  url_foto                String?               @db.LongText
+  medico_institucional_id Int?
+  grupo_institucional_id  Int?
+  usuario                 usuarios?             @relation(fields: [usuario_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  medico_institucional    usuarios?             @relation("AssignedDoctor", fields: [medico_institucional_id], references: [id], onDelete: SetNull)
+  grupo_institucional     institutional_groups? @relation(fields: [grupo_institucional_id], references: [id], onDelete: SetNull)
+  medicamentos            medicamentos[]
+  contatos_emergencia     contatos_emergencia[]
+  alertas                 alertas[]
+  alertas_recorrentes     alertas_recorrentes[]
+  localizacoes            localizacoes[]
+  dispositivos            dispositivos[]
+
+  @@index([usuario_id], map: "usuario_id_index")
+  @@index([medico_institucional_id])
+  @@index([grupo_institucional_id])
+}
+
+model institutional_memberships {
+  id             Int      @id @default(autoincrement())
+  instituicao_id Int
+  medico_id      Int
+  especialidade  String?  @db.VarChar(100)
+  ativo          Boolean  @default(true)
+  data_criacao   DateTime @default(now()) @db.Timestamp(0)
+  instituicao    usuarios @relation("InstitutionalOwner", fields: [instituicao_id], references: [id], onDelete: Cascade)
+  medico         usuarios @relation("InstitutionalDoctor", fields: [medico_id], references: [id], onDelete: Cascade)
+
+  @@unique([instituicao_id, medico_id])
+  @@unique([medico_id])
+  @@index([instituicao_id])
+}
+
+model institutional_groups {
+  id             Int           @id @default(autoincrement())
+  instituicao_id Int
+  medico_id      Int?
+  nome           String        @db.VarChar(100)
+  data_criacao   DateTime      @default(now()) @db.Timestamp(0)
+  instituicao    usuarios      @relation(fields: [instituicao_id], references: [id], onDelete: Cascade)
+  medico         usuarios?     @relation("GroupDoctor", fields: [medico_id], references: [id], onDelete: SetNull)
+  dependentes    dependentes[]
+
+  @@index([instituicao_id])
+  @@index([medico_id])
 }
 
 model medicamentos {
@@ -26,9 +104,116 @@ model medicamentos {
   dependente_id Int?
   nome          String       @db.VarChar(150)
   dosagem       String?      @db.VarChar(75)
-  horario       DateTime?    @db.Time(0)
+  horario       String?      @db.VarChar(8)
   observacao    String?      @db.Text
   dependentes   dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "medicamentos_ibfk_1")
 
   @@index([dependente_id], map: "dependente_id")
+}
+
+model alertas {
+  id            Int          @id @default(autoincrement())
+  dependente_id Int?
+  tipo          String       @db.VarChar(100)
+  titulo        String       @db.VarChar(150)
+  descricao     String?      @db.Text
+  prioridade    String       @db.VarChar(20)
+  status        String       @db.VarChar(20)
+  data_hora     DateTime     @db.Timestamp(0)
+  dependente    dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dependente_id], map: "alertas_dependente_id_index")
+}
+
+model alertas_recorrentes {
+  id              Int         @id @default(autoincrement())
+  dependente_id   Int
+  tipo            String      @db.VarChar(100)
+  titulo          String      @db.VarChar(150)
+  descricao       String?     @db.Text
+  prioridade      String      @db.VarChar(20)
+  dias_semana     String      @db.VarChar(20)
+  data_inicio     DateTime    @db.Date
+  horario         String      @db.VarChar(5)
+  proximo_disparo DateTime    @db.Timestamp(0)
+  ativo           Boolean     @default(true)
+  data_criacao    DateTime    @default(now()) @db.Timestamp(0)
+  dependente      dependentes @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dependente_id])
+  @@index([ativo, proximo_disparo])
+}
+
+model localizacoes {
+  id            Int          @id @default(autoincrement())
+  dependente_id Int?
+  endereco      String       @db.VarChar(255)
+  latitude      Float?
+  longitude     Float?
+  data_hora     DateTime     @db.Timestamp(0)
+  atual         Boolean      @default(false)
+  dependente    dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dependente_id], map: "localizacoes_dependente_id_index")
+}
+
+model dispositivos {
+  id                 Int          @id @default(autoincrement())
+  dependente_id      Int?
+  nome               String       @db.VarChar(100)
+  status             String       @db.VarChar(20)
+  bateria            Int?
+  gps_online         Boolean      @default(true)
+  ultima_atualizacao DateTime     @db.Timestamp(0)
+  dependente         dependentes? @relation(fields: [dependente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dependente_id], map: "dispositivos_dependente_id_index")
+}
+
+// ================================================
+// ADICIONE ESTE MODEL NO SEU server/prisma/schema.prisma
+// ================================================
+
+model LeituraArduino {
+  id             Int      @id @default(autoincrement())
+  distancia      Int // cm - sensor ultrassonico
+  bateria        Int // % de carga da bateria (0-100)
+  latitude       Float? // localizacao GPS (opcional)
+  longitude      Float? // localizacao GPS (opcional)
+  queda          Boolean  @default(false) // true = detectou queda
+  sos            Boolean  @default(false) // true = botao SOS pressionado
+  estado         String // NORMAL | ALERTA | CRITICO
+  alerta_enviado Boolean  @default(false) // controle de alerta ja enviado
+  timestamp      DateTime @default(now())
+
+  @@map("leitura_arduino")
+}
+
+model planos {
+  id                   Int           @id @default(autoincrement())
+  nome                 String        @unique @db.VarChar(40)
+  preco_centavos       Int
+  preco_anual_centavos Int           @default(0)
+  max_dependentes      Int
+  descricao            String        @db.Text
+  ativo                Boolean       @default(true)
+  data_criacao         DateTime      @default(now()) @db.Timestamp(0)
+  assinaturas          assinaturas[]
+}
+
+model assinaturas {
+  id             Int      @id @default(autoincrement())
+  usuario_id     Int
+  plano_id       Int
+  status         String   @default("simulada") @db.VarChar(30)
+  ciclo_cobranca String   @default("mensal") @db.VarChar(10)
+  valor_centavos Int
+  inicio         DateTime @default(now()) @db.Timestamp(0)
+  validade_ate   DateTime @db.Timestamp(0)
+  data_criacao   DateTime @default(now()) @db.Timestamp(0)
+  usuario        usuarios @relation(fields: [usuario_id], references: [id], onDelete: Cascade)
+  plano          planos   @relation(fields: [plano_id], references: [id], onDelete: Restrict)
+
+  @@index([usuario_id, status, validade_ate])
+  @@index([plano_id])
 }

@@ -3,7 +3,7 @@ import { ChevronDown, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface Dependent {
-  id: string;
+  id: number;
   name: string;
   photo: string;
   relationship: string;

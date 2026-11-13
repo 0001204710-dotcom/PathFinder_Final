@@ -20,8 +20,13 @@ export default defineConfig({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
-  // ADICIONE ESTE BLOCO ABAIXO:
   server: {
     host: true, // Permite que o Live Share acesse o servidor local
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
   },
 })

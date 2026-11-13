@@ -1,32 +1,73 @@
+import { apiFetch } from '../api';
 import { Shield, Users, Activity, AlertTriangle, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export default function Admin() {
+  const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [dispositivos, setDispositivos] = useState<any[]>([]);
+  const [dependentes, setDependentes] = useState<any[]>([]);
+  const [alertas, setAlertas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = () => {
+      setLoading(true);
+      Promise.all([
+        apiFetch('/api/usuarios').then((r) => r.json()),
+        apiFetch('/api/dispositivos').then((r) => r.json()),
+        apiFetch('/api/dependentes').then((r) => r.json()),
+        apiFetch('/api/alertas').then((r) => r.json())
+      ])
+        .then(([u, d, dep, a]) => {
+          setUsuarios(u || []);
+          setDispositivos(d || []);
+          setDependentes(dep || []);
+          setAlertas(a || []);
+        })
+        .catch((err) => console.error(err))
+        .finally(() => setLoading(false));
+    };
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const resolvidos = alertas.filter((a: any) => a.status === 'resolvido').length;
+  const taxaResposta = alertas.length > 0 ? Math.round((resolvidos / alertas.length) * 100) : 0;
+  
+  // Dispositivos online = dispositivos com GPS online baseado em dependentes
+  const dispositivosOnline = dispositivos.filter((d: any) => d.gps_online === true).length;
+
   const systemStats = [
-    { label: 'Usuários Ativos', value: '234', change: '+12%', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Dispositivos Online', value: '187', change: '+8%', icon: Activity, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Alertas Hoje', value: '45', change: '-5%', icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'Taxa de Resposta', value: '98%', change: '+2%', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Usuários Ativos', value: usuarios.length, change: '+0%', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Dispositivos Online', value: dispositivosOnline, change: `/${dependentes.length}`, icon: Activity, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Alertas Hoje', value: alertas.length, change: '+0%', icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'Taxa de Resposta', value: `${taxaResposta}%`, change: '+0%', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
   ];
 
-  const recentUsers = [
-    { name: 'João Silva', status: 'online', device: 'PF-2026', lastSeen: '2 min atrás', alerts: 2 },
-    { name: 'Maria Santos', status: 'online', device: 'PF-2025', lastSeen: '5 min atrás', alerts: 0 },
-    { name: 'Pedro Costa', status: 'offline', device: 'PF-2024', lastSeen: '1h atrás', alerts: 1 },
-    { name: 'Ana Oliveira', status: 'online', device: 'PF-2023', lastSeen: 'Agora', alerts: 3 },
-  ];
+  const recentUsers = usuarios.slice(0, 4).map((u: any) => ({
+    name: u.nome,
+    status: 'online',
+    device: (u.dependentes && u.dependentes[0]) ? `DEP-${u.dependentes[0].id}` : '-',
+    lastSeen: '-',
+    alerts: 0,
+  }));
 
-  const deviceStatus = [
-    { id: 'PF-2026', user: 'João Silva', battery: 87, gps: 'online', connection: 'strong', status: 'active' },
-    { id: 'PF-2025', user: 'Maria Santos', battery: 45, gps: 'online', connection: 'medium', status: 'active' },
-    { id: 'PF-2024', user: 'Pedro Costa', battery: 12, gps: 'offline', connection: 'weak', status: 'inactive' },
-    { id: 'PF-2023', user: 'Ana Oliveira', battery: 92, gps: 'online', connection: 'strong', status: 'active' },
-  ];
+  const deviceStatus = dispositivos.slice(0, 6).map((d: any) => ({
+    id: d.id,
+    user: d.dependente?.nome || '-',
+    battery: d.bateria ?? 0,
+    gps: d.gps_online ? 'online' : 'offline',
+    connection: d.status || 'unknown',
+    status: d.gps_online ? 'active' : 'inactive',
+  }));
 
-  const criticalAlerts = [
-    { user: 'Ana Oliveira', type: 'Emergência', severity: 'high', time: '2 min atrás' },
-    { user: 'Pedro Costa', type: 'Bateria Crítica', severity: 'high', time: '15 min atrás' },
-    { user: 'João Silva', type: 'GPS Perdido', severity: 'medium', time: '1h atrás' },
-  ];
+  const criticalAlerts = alertas.slice(0, 3).map((a: any) => ({
+    user: a.dependente?.nome || '-',
+    type: a.titulo || a.tipo || 'Alerta',
+    severity: a.prioridade || 'high',
+    time: a.data_hora ? new Date(a.data_hora).toLocaleString() : '-',
+  }));
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -41,23 +82,19 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* System Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {systemStats.map((stat) => {
           const Icon = stat.icon;
-          const isPositive = stat.change.startsWith('+');
           return (
             <div key={stat.label} className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
               <div className="flex items-center justify-between mb-3">
                 <div className={`w-12 h-12 rounded-lg ${stat.bg} flex items-center justify-center`}>
                   <Icon className={`w-6 h-6 ${stat.color}`} />
                 </div>
-                <span className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                  {stat.change}
-                </span>
+                <span className={`text-sm font-medium text-green-600`}>{stat.change}</span>
               </div>
               <p className="text-gray-600 text-sm mb-1">{stat.label}</p>
-              <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
+              <p className="text-3xl font-bold text-gray-900">{loading ? '—' : stat.value}</p>
             </div>
           );
         })}
@@ -117,15 +154,11 @@ export default function Admin() {
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-2 h-2 rounded-full ${
-                      user.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                    }`} />
+                    <div className={`w-2 h-2 rounded-full ${user.status === 'online' ? 'bg-green-500' : 'bg-gray-400'}`} />
                     <span className="text-sm text-gray-600">{user.lastSeen}</span>
                   </div>
                   {user.alerts > 0 && (
-                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                      {user.alerts} alertas
-                    </span>
+                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">{user.alerts} alertas</span>
                   )}
                 </div>
               </div>
@@ -152,34 +185,20 @@ export default function Admin() {
                     <p className="font-bold text-gray-900">{device.id}</p>
                     <p className="text-sm text-gray-600">{device.user}</p>
                   </div>
-                  {device.status === 'active' ? (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600" />
-                  )}
+                  {device.status === 'active' ? <CheckCircle className="w-5 h-5 text-green-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
                     <p className="text-gray-600">Bateria</p>
-                    <p className={`font-medium ${
-                      device.battery > 50 ? 'text-green-600' : device.battery > 20 ? 'text-orange-600' : 'text-red-600'
-                    }`}>
-                      {device.battery}%
-                    </p>
+                    <p className={`font-medium ${device.battery > 50 ? 'text-green-600' : device.battery > 20 ? 'text-orange-600' : 'text-red-600'}`}>{device.battery}%</p>
                   </div>
                   <div>
                     <p className="text-gray-600">GPS</p>
-                    <p className={`font-medium ${device.gps === 'online' ? 'text-green-600' : 'text-red-600'}`}>
-                      {device.gps}
-                    </p>
+                    <p className={`font-medium ${device.gps === 'online' ? 'text-green-600' : 'text-red-600'}`}>{device.gps}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Sinal</p>
-                    <p className={`font-medium ${
-                      device.connection === 'strong' ? 'text-green-600' : device.connection === 'medium' ? 'text-orange-600' : 'text-red-600'
-                    }`}>
-                      {device.connection}
-                    </p>
+                    <p className={`font-medium ${device.connection === 'strong' ? 'text-green-600' : device.connection === 'medium' ? 'text-orange-600' : 'text-red-600'}`}>{device.connection}</p>
                   </div>
                 </div>
               </div>
